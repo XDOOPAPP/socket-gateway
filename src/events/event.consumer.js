@@ -1,67 +1,60 @@
-const amqp = require('amqplib');
+const EventBus = require('../infra/event-bus');
 const socketHandler = require('../socket/socket.handler');
 const env = require('../config/env');
 
 class EventConsumer {
-    constructor() {
-        this.connection = null;
-        this.channel = null;
-        this.exchange = 'domain_events';
+  constructor() {
+    this.eventBus = new EventBus(env.rabbitMQ_url);
+  }
+
+  async connect() {
+    try {
+      await this.eventBus.connect();
+
+      // Subscribe notification event
+      await this.eventBus.subscribe('notification.send', async (data) => {
+        console.log('📩 Received notification.new event:', data);
+        this.handleMessage(data);
+      });
+
+    } catch (error) {
+      console.error('❌ EventConsumer failed to connect:', error);
+      setTimeout(() => this.connect(), 5000); // retry
     }
+  }
 
-    async connect() {
-        try {
-            this.connection = await amqp.connect(env.rabbitMQ_url);
-            this.channel = await this.connection.createChannel();
+  handleMessage(data) {
+    /**
+     * Expected structure:
+     * {
+     *   target: 'USER' | 'ADMINS' | 'ALL',
+     *   userId?: string,
+     *   payload: any
+     * }
+     */
+    const { target, userId, payload } = data;
 
-            await this.channel.assertExchange(this.exchange, 'topic', { durable: true });
-
-            const q = await this.channel.assertQueue('', { exclusive: true });
-
-            // Bind to routing keys we care about
-            // Assuming notification-service publishes with 'notification.send'
-            await this.channel.bindQueue(q.queue, this.exchange, 'notification.send');
-
-            console.log('✅ EventConsumer connected and waiting for messages');
-
-            this.channel.consume(q.queue, (msg) => {
-                if (msg.content) {
-                    try {
-                        const payload = JSON.parse(msg.content.toString());
-                        console.log(`📩 Received event: ${msg.fields.routingKey}`, payload);
-
-                        this.handleMessage(payload);
-
-                        this.channel.ack(msg);
-                    } catch (e) {
-                        console.error('Error processing message', e);
-                    }
-                }
-            });
-        } catch (error) {
-            console.error('Failed to connect to RabbitMQ', error);
-            setTimeout(() => this.connect(), 5000); // Retry logic
+    switch (target) {
+      case 'USER':
+        if (!userId) {
+          console.warn('⚠️ Missing userId for user target');
+          return;
         }
-    }
+        socketHandler.emitToUser(userId, payload);
+        break;
 
-    handleMessage(data) {
-        // data structure expected: { target: 'user'|'admins'|'all', userId?: string, payload: any }
-        const { target, userId, payload } = data;
+      case 'ADMINS':
+        socketHandler.emitToAdmins(payload);
+        break;
 
-        switch (target) {
-            case 'user':
-                if (userId) socketHandler.emitToUser(userId, payload);
-                break;
-            case 'admins':
-                socketHandler.emitToAdmins(payload);
-                break;
-            case 'all':
-                socketHandler.emitToAll(payload);
-                break;
-            default:
-                console.warn('Unknown target in notification event:', target);
-        }
+      case 'ALL':
+        socketHandler.emitToAll(payload);
+        break;
+
+      default:
+        console.warn('⚠️ Unknown notification target:', target);
     }
+  }
 }
 
 module.exports = new EventConsumer();
