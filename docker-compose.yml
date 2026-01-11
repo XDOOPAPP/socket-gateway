@@ -1,0 +1,21 @@
+services:
+  socket-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fepa-socket-gateway
+    ports:
+      - "3102:3102"
+    environment:
+      - NODE_ENV=development
+      - PORT=3102
+      - CORS_ORIGIN=*
+      - RABBITMQ_URL=amqp://fepa:fepa123@fepa-rabbitmq:5672
+      - JWT_SECRET=${JWT_SECRET:-fepa-key}
+    networks:
+      - fepa-network
+    restart: unless-stopped
+
+networks:
+  fepa-network:
+    external: true

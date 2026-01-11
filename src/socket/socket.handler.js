@@ -30,7 +30,7 @@ class SocketHandler {
         socket.join(`user:${userId}`);
         console.log(`👤 User ${userId} joined room user:${userId}`);
 
-        if (role === 'admin') {
+        if (role === 'ADMIN') {
           socket.join('admins');
           console.log(`🛡️ Admin joined room admins`);
         }
