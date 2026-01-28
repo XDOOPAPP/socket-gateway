@@ -7,7 +7,7 @@ services:
     ports:
       - "3102:3102"
     environment:
-      - NODE_ENV=development
+      - NODE_ENV=production
       - PORT=3102
       - CORS_ORIGIN=*
       - RABBITMQ_URL=amqp://fepa:fepa123@fepa-rabbitmq:5672
